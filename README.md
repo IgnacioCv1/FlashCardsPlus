@@ -18,6 +18,22 @@
    - API: `npm run dev:api`
    - Web: `npm run dev:web`
 
+## API auth (current)
+- `apps/api` now owns auth and validates bearer access tokens on protected routes.
+- Protected routes:
+  - `/decks/*`
+  - `/cards/*`
+- Auth endpoints:
+  - `POST /auth/dev-login` (development only)
+  - `POST /auth/refresh`
+  - `POST /auth/logout`
+  - `GET /auth/me`
+
+Required API env vars:
+- `JWT_ACCESS_SECRET`
+- `JWT_ACCESS_EXPIRES_IN_SECONDS` (default `900`)
+- `REFRESH_TOKEN_TTL_DAYS` (default `30`)
+
 ## Google OAuth setup (web)
 1. Copy env template:
    - `cp apps/web/.env.example apps/web/.env`
