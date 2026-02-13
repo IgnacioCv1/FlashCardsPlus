@@ -11,3 +11,6 @@ apps/api/dev.db
 apps/api/dev.db-journal
 apps/web/dev.db
 apps/web/dev.db-journal
+apps/api/prisma/dev.db
+apps/web/tsconfig.tsbuildinfo
+
