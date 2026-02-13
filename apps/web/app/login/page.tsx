@@ -1,9 +1,21 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { buildGoogleStartUrl } from "@/lib/auth-client";
+import { useAuth } from "@/components/auth-provider";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [isLoading, router, user]);
+
   const googleUrl = useMemo(() => {
     if (typeof window === "undefined") {
       return buildGoogleStartUrl();

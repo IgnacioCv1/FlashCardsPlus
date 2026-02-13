@@ -2,12 +2,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchCurrentUser, logoutWithCookieSession, refreshAccessToken, type AuthedUser } from "@/lib/auth-client";
+import { apiBaseUrl } from "@/lib/api-config";
 
 interface AuthContextValue {
   user: AuthedUser | null;
   accessToken: string | null;
   isLoading: boolean;
-  refreshSession: () => Promise<boolean>;
+  refreshSession: () => Promise<string | null>;
+  apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   logout: () => Promise<void>;
 }
 
@@ -23,20 +25,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setAccessToken(null);
       setUser(null);
-      return false;
+      return null;
     }
 
     const me = await fetchCurrentUser(token);
     if (!me) {
       setAccessToken(null);
       setUser(null);
-      return false;
+      return null;
     }
 
     setAccessToken(token);
     setUser(me);
-    return true;
+    return token;
   }, []);
+
+  const apiFetch = useCallback(
+    async (path: string, init: RequestInit = {}) => {
+      let token = accessToken ?? (await refreshSession());
+      if (!token) {
+        return new Response(null, { status: 401, statusText: "Unauthorized" });
+      }
+
+      const makeRequest = (access: string) =>
+        fetch(`${apiBaseUrl}${path}`, {
+          ...init,
+          credentials: "include",
+          headers: {
+            ...(init.headers ?? {}),
+            Authorization: `Bearer ${access}`
+          }
+        });
+
+      let response = await makeRequest(token);
+      if (response.status !== 401) {
+        return response;
+      }
+
+      token = await refreshSession();
+      if (!token) {
+        return response;
+      }
+
+      response = await makeRequest(token);
+      return response;
+    },
+    [accessToken, refreshSession]
+  );
 
   const logout = useCallback(async () => {
     await logoutWithCookieSession();
@@ -60,9 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken,
       isLoading,
       refreshSession,
+      apiFetch,
       logout
     }),
-    [accessToken, isLoading, logout, refreshSession, user]
+    [accessToken, apiFetch, isLoading, logout, refreshSession, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

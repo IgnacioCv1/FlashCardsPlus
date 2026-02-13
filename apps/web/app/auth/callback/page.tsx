@@ -17,8 +17,8 @@ function AuthCallbackInner() {
         return;
       }
 
-      const ok = await refreshSession();
-      router.replace(ok ? "/dashboard" : "/login");
+      const token = await refreshSession();
+      router.replace(token ? "/dashboard" : "/login");
     })();
   }, [refreshSession, router, searchParams]);
 
