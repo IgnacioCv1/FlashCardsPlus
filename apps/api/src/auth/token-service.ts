@@ -57,7 +57,14 @@ export async function rotateRefreshToken(rawRefreshToken: string, clientInfo: Cl
     }
   });
 
-  if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
+  if (!existing) {
+    throw new AppError("Invalid refresh token", 401);
+  }
+  if (existing.revokedAt) {
+    await revokeRefreshTokenFamily(existing.familyId);
+    throw new AppError("Invalid refresh token", 401);
+  }
+  if (existing.expiresAt <= new Date()) {
     throw new AppError("Invalid refresh token", 401);
   }
 
@@ -111,6 +118,18 @@ export async function revokeRefreshToken(rawRefreshToken: string): Promise<void>
 
   await prisma.refreshToken.update({
     where: { id: existing.id },
+    data: {
+      revokedAt: new Date()
+    }
+  });
+}
+
+export async function revokeRefreshTokenFamily(familyId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({
+    where: {
+      familyId,
+      revokedAt: null
+    },
     data: {
       revokedAt: new Date()
     }
