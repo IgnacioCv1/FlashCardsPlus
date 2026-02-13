@@ -9,7 +9,12 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().min(32),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(900),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30)
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
+  GOOGLE_REDIRECT_URI: z.string().url(),
+  WEB_AUTH_SUCCESS_REDIRECT: z.string().url().default("http://localhost:3000/auth/callback"),
+  WEB_AUTH_FAILURE_REDIRECT: z.string().url().default("http://localhost:3000/login")
 });
 
 export const env = envSchema.parse(process.env);

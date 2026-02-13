@@ -11,7 +11,8 @@ const app = express();
 
 app.use(
   cors({
-    origin: env.CORS_ORIGIN
+    origin: env.CORS_ORIGIN,
+    credentials: true
   })
 );
 app.use(express.json());

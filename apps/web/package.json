@@ -6,15 +6,10 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init-auth"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.7.4",
-    "@prisma/client": "^6.1.0",
     "next": "15.1.0",
-    "next-auth": "^5.0.0-beta.25",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "@flashcards/shared": "0.1.0"
@@ -22,7 +17,6 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
-    "prisma": "^6.1.0",
     "typescript": "^5.7.2"
   }
 }

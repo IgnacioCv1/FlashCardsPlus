@@ -59,3 +59,17 @@ model RefreshToken {
   @@index([familyId])
   @@index([expiresAt])
 }
+
+model OAuthState {
+  id           String    @id @default(cuid())
+  stateHash    String    @unique
+  codeVerifier String
+  client       String
+  redirectUri  String
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  consumedAt   DateTime?
+
+  @@index([expiresAt])
+  @@index([client])
+}

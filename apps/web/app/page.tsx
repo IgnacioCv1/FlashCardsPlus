@@ -1,13 +1,17 @@
-import Link from "next/link";
-import { auth } from "@/auth";
+"use client";
 
-export default async function HomePage() {
-  const session = await auth();
+import Link from "next/link";
+import { useAuth } from "@/components/auth-provider";
+
+export default function HomePage() {
+  const { user, isLoading } = useAuth();
 
   return (
     <main style={{ padding: 24, fontFamily: "sans-serif" }}>
       <h1>Flashcards MVP</h1>
-      {session?.user ? (
+      {isLoading ? (
+        <p>Checking session...</p>
+      ) : user ? (
         <p>
           You are signed in. Go to <Link href="/dashboard">Dashboard</Link>.
         </p>
