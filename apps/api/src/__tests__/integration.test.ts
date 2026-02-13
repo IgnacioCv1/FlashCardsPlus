@@ -56,6 +56,7 @@ beforeEach(async () => {
   clearRateLimitBuckets();
   await prisma.card.deleteMany();
   await prisma.deck.deleteMany();
+  await prisma.monthlyUsage.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.oAuthState.deleteMany();
   await prisma.user.deleteMany();
@@ -69,6 +70,11 @@ async function loginUser(email: string): Promise<LoginResponse> {
   const response = await request(app).post("/auth/dev-login").send({ email });
   expect(response.status).toBe(201);
   return response.body as LoginResponse;
+}
+
+async function setPlan(email: string, plan: "FREE" | "PRO") {
+  const response = await request(app).post("/auth/dev-set-plan").send({ email, plan });
+  expect(response.status).toBe(200);
 }
 
 describe("API integration", () => {
@@ -211,5 +217,166 @@ describe("API integration", () => {
     expect(callback2.status).toBe(302);
     expect(callback2.headers.location).toContain("http://localhost:3000/login");
     expect(callback2.headers.location).toContain("Invalid+OAuth+state");
+  });
+
+  it("generates cards from uploaded document into owned deck", async () => {
+    const login = await loginUser("ingest-owner@test.local");
+
+    const deck = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "Ingest Deck",
+        description: "Target deck"
+      });
+    expect(deck.status).toBe(201);
+    const deckId = (deck.body as { id: string }).id;
+
+    const fileBuffer = Buffer.from("Sample PDF bytes for testing");
+    const ingest = await request(app)
+      .post("/ingest/generate-cards")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .field("deckId", deckId)
+      .field("targetCards", "5")
+      .attach("file", fileBuffer, {
+        filename: "biology-notes.pdf",
+        contentType: "application/pdf"
+      });
+
+    expect(ingest.status).toBe(201);
+    expect((ingest.body as { createdCount: number }).createdCount).toBe(5);
+
+    const listCards = await request(app)
+      .get(`/decks/${deckId}/cards`)
+      .set("Authorization", `Bearer ${login.accessToken}`);
+    expect(listCards.status).toBe(200);
+    expect((listCards.body as unknown[]).length).toBe(5);
+  });
+
+  it("rejects ingest for deck not owned by current user", async () => {
+    const owner = await loginUser("ingest-deck-owner@test.local");
+    const otherUser = await loginUser("ingest-other@test.local");
+
+    const deck = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        title: "Private Deck",
+        description: "Owner only"
+      });
+    expect(deck.status).toBe(201);
+    const deckId = (deck.body as { id: string }).id;
+
+    const ingest = await request(app)
+      .post("/ingest/generate-cards")
+      .set("Authorization", `Bearer ${otherUser.accessToken}`)
+      .field("deckId", deckId)
+      .attach("file", Buffer.from("x"), {
+        filename: "attempt.pdf",
+        contentType: "application/pdf"
+      });
+
+    expect(ingest.status).toBe(404);
+  });
+
+  it("rejects ingest for unsupported file types", async () => {
+    const login = await loginUser("ingest-file-type@test.local");
+
+    const deck = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "Deck",
+        description: "Desc"
+      });
+    expect(deck.status).toBe(201);
+    const deckId = (deck.body as { id: string }).id;
+
+    const ingest = await request(app)
+      .post("/ingest/generate-cards")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .field("deckId", deckId)
+      .attach("file", Buffer.from("malicious"), {
+        filename: "script.exe",
+        contentType: "application/octet-stream"
+      });
+
+    expect(ingest.status).toBe(400);
+    expect((ingest.body as { error: string }).error).toContain("Unsupported file type");
+  });
+
+  it("enforces free-tier monthly document generation limit", async () => {
+    const email = "free-plan@test.local";
+    const login = await loginUser(email);
+    const deck = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "Free Deck"
+      });
+    expect(deck.status).toBe(201);
+    const deckId = (deck.body as { id: string }).id;
+
+    for (let i = 0; i < 3; i += 1) {
+      const ingest = await request(app)
+        .post("/ingest/generate-cards")
+        .set("Authorization", `Bearer ${login.accessToken}`)
+        .field("deckId", deckId)
+        .attach("file", Buffer.from("pdf"), {
+          filename: `free-${i}.pdf`,
+          contentType: "application/pdf"
+        });
+
+      expect(ingest.status).toBe(201);
+      expect((ingest.body as { plan: string }).plan).toBe("FREE");
+      expect((ingest.body as { modelUsed: string }).modelUsed).toBe("gemini-2.5-flash-lite");
+    }
+
+    const blocked = await request(app)
+      .post("/ingest/generate-cards")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .field("deckId", deckId)
+      .attach("file", Buffer.from("pdf"), {
+        filename: "free-blocked.pdf",
+        contentType: "application/pdf"
+      });
+    expect(blocked.status).toBe(403);
+  });
+
+  it("uses pro-tier model and returns ai settings for plan", async () => {
+    const email = "pro-plan@test.local";
+    const login = await loginUser(email);
+    await setPlan(email, "PRO");
+
+    const settings = await request(app).get("/ai/settings").set("Authorization", `Bearer ${login.accessToken}`);
+    expect(settings.status).toBe(200);
+    expect((settings.body as { plan: string }).plan).toBe("PRO");
+    expect((settings.body as { models: { documentGeneration: string } }).models.documentGeneration).toBe(
+      "gemini-2.5-flash"
+    );
+    expect((settings.body as { models: { gradingAndChat: string } }).models.gradingAndChat).toBe(
+      "gemini-2.5-flash-lite"
+    );
+
+    const deck = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "Pro Deck"
+      });
+    expect(deck.status).toBe(201);
+    const deckId = (deck.body as { id: string }).id;
+
+    const ingest = await request(app)
+      .post("/ingest/generate-cards")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .field("deckId", deckId)
+      .attach("file", Buffer.from("pdf"), {
+        filename: "pro.pdf",
+        contentType: "application/pdf"
+      });
+    expect(ingest.status).toBe(201);
+    expect((ingest.body as { plan: string }).plan).toBe("PRO");
+    expect((ingest.body as { modelUsed: string }).modelUsed).toBe("gemini-2.5-flash");
   });
 });

@@ -16,6 +16,11 @@ const devLoginSchema = z.object({
   name: z.string().trim().min(1).max(120).optional()
 });
 
+const devSetPlanSchema = z.object({
+  email: z.string().email(),
+  plan: z.enum(["FREE", "PRO"])
+});
+
 const refreshSchema = z.object({
   refreshToken: z.string().min(1).optional()
 });
@@ -86,6 +91,38 @@ authRouter.post(
       user,
       ...tokens
     });
+  })
+);
+
+authRouter.post(
+  "/dev-set-plan",
+  asyncHandler(async (req, res) => {
+    if (env.NODE_ENV === "production") {
+      throw new AppError("Not found", 404);
+    }
+
+    const payload = devSetPlanSchema.parse(req.body);
+    const existing = await prisma.user.findUnique({
+      where: { email: payload.email },
+      select: { id: true }
+    });
+    if (!existing) {
+      throw new AppError("User not found", 404);
+    }
+
+    const user = await prisma.user.update({
+      where: { email: payload.email },
+      data: {
+        plan: payload.plan
+      },
+      select: {
+        id: true,
+        email: true,
+        plan: true
+      }
+    });
+
+    res.json({ user });
   })
 );
 

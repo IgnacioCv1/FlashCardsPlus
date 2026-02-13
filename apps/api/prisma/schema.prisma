@@ -11,10 +11,12 @@ model User {
   id            String         @id @default(cuid())
   email         String?        @unique
   name          String?
+  plan          PlanTier       @default(FREE)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   decks         Deck[]
   refreshTokens RefreshToken[]
+  monthlyUsage  MonthlyUsage[]
 }
 
 model Deck {
@@ -72,4 +74,23 @@ model OAuthState {
 
   @@index([expiresAt])
   @@index([client])
+}
+
+model MonthlyUsage {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monthKey            String
+  documentGenerations Int      @default(0)
+  chatTurns           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, monthKey])
+  @@index([monthKey])
+}
+
+enum PlanTier {
+  FREE
+  PRO
 }

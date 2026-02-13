@@ -25,11 +25,14 @@
   - `/cards/*`
 - Auth endpoints:
   - `POST /auth/dev-login` (development only)
+  - `POST /auth/dev-set-plan` (development only)
   - `GET /auth/google/start` (web OAuth entrypoint)
   - `GET /auth/google/callback` (Google OAuth callback)
   - `POST /auth/refresh`
   - `POST /auth/logout`
   - `GET /auth/me`
+  - `POST /ingest/generate-cards` (upload PDF/DOCX and generate cards directly)
+  - `GET /ai/settings` (current plan, model mapping, monthly limits, usage)
 
 Required API env vars:
 - `JWT_ACCESS_SECRET`
@@ -40,6 +43,13 @@ Required API env vars:
 - `GOOGLE_REDIRECT_URI` (e.g. `http://localhost:4000/auth/google/callback`)
 - `WEB_AUTH_SUCCESS_REDIRECT` (e.g. `http://localhost:3000/auth/callback`)
 - `WEB_AUTH_FAILURE_REDIRECT` (e.g. `http://localhost:3000/login`)
+- `AI_INGEST_PROVIDER` (`gemini` or `mock`)
+- `GEMINI_API_KEY` (required when `AI_INGEST_PROVIDER=gemini`)
+
+Current plan tiers:
+- `FREE`: document generation model `gemini-2.5-flash-lite`, up to 3 document generations/month
+- `PRO`: document generation model `gemini-2.5-flash`, up to 20 document generations/month
+- Grading/chat model mapping is exposed via `GET /ai/settings`
 
 ## Google OAuth setup (API-first)
 1. Copy API env template:

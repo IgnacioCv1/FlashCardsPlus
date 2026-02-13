@@ -14,7 +14,9 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   GOOGLE_REDIRECT_URI: z.string().url(),
   WEB_AUTH_SUCCESS_REDIRECT: z.string().url().default("http://localhost:3000/auth/callback"),
-  WEB_AUTH_FAILURE_REDIRECT: z.string().url().default("http://localhost:3000/login")
+  WEB_AUTH_FAILURE_REDIRECT: z.string().url().default("http://localhost:3000/login"),
+  AI_INGEST_PROVIDER: z.enum(["gemini", "mock"]).default("gemini"),
+  GEMINI_API_KEY: z.string().min(1).optional()
 });
 
 export const env = envSchema.parse(process.env);

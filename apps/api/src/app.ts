@@ -4,9 +4,11 @@ import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { createRateLimiter } from "./middleware/rate-limit.js";
 import { requireAuth } from "./middleware/require-auth.js";
+import { aiRouter } from "./routes/ai.js";
 import { authRouter } from "./routes/auth.js";
 import { cardsRouter } from "./routes/cards.js";
 import { decksRouter } from "./routes/decks.js";
+import { ingestRouter } from "./routes/ingest.js";
 
 export function createApp() {
   const app = express();
@@ -44,8 +46,10 @@ export function createApp() {
   app.use("/auth", authLimiter);
   app.use("/auth/refresh", refreshLimiter);
   app.use("/auth", authRouter);
+  app.use("/ai", requireAuth, aiRouter);
   app.use("/decks", requireAuth, decksRouter);
   app.use("/cards", requireAuth, cardsRouter);
+  app.use("/ingest", requireAuth, ingestRouter);
 
   app.use(errorHandler);
   return app;
