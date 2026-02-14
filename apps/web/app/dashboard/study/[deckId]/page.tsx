@@ -27,6 +27,35 @@ interface StudySessionResponse {
   cards: StudySessionCard[];
 }
 
+interface AiChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface StudyGradeResponse {
+  cardId: string;
+  grading: {
+    score: number;
+    rating: ReviewRating;
+    feedback: string;
+    idealAnswer: string;
+    assistantReply: string;
+  };
+  usage: {
+    chatTurns: number;
+    remainingMonthlyChatTurns: number;
+  };
+}
+
+interface StudyFollowUpResponse {
+  cardId: string;
+  assistantMessage: string;
+  usage: {
+    chatTurns: number;
+    remainingMonthlyChatTurns: number;
+  };
+}
+
 type StudyMode = "normal" | "ai";
 type ReviewRating = "AGAIN" | "HARD" | "GOOD" | "EASY";
 
@@ -43,7 +72,27 @@ export default function StudyDeckPage() {
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  const [aiAnswerInput, setAiAnswerInput] = useState("");
+  const [aiFollowUpInput, setAiFollowUpInput] = useState("");
+  const [aiSubmittedAnswer, setAiSubmittedAnswer] = useState<string | null>(null);
+  const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
+  const [aiGradeResult, setAiGradeResult] = useState<StudyGradeResponse["grading"] | null>(null);
+  const [aiRemainingTurns, setAiRemainingTurns] = useState<number | null>(null);
+  const [isAiGrading, setIsAiGrading] = useState(false);
+  const [isAiFollowUpSending, setIsAiFollowUpSending] = useState(false);
+
   const currentCard = useMemo(() => session?.cards[0] ?? null, [session]);
+
+  function resetAiState() {
+    setAiAnswerInput("");
+    setAiFollowUpInput("");
+    setAiSubmittedAnswer(null);
+    setAiMessages([]);
+    setAiGradeResult(null);
+    setAiRemainingTurns(null);
+    setIsAiGrading(false);
+    setIsAiFollowUpSending(false);
+  }
 
   async function readErrorMessage(response: Response): Promise<string> {
     try {
@@ -74,6 +123,7 @@ export default function StudyDeckPage() {
       const data = (await response.json()) as StudySessionResponse;
       setSession(data);
       setIsAnswerRevealed(false);
+      resetAiState();
     } catch {
       setStatusMessage("Could not load study session.");
       setSession(null);
@@ -113,6 +163,99 @@ export default function StudyDeckPage() {
     }
   }
 
+  async function submitAiGrade() {
+    if (!currentCard) {
+      return;
+    }
+
+    const answer = aiAnswerInput.trim();
+    if (!answer) {
+      setStatusMessage("Type your recalled answer before grading.");
+      return;
+    }
+
+    setIsAiGrading(true);
+    setStatusMessage(null);
+    try {
+      const response = await apiFetch("/study/grade", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          cardId: currentCard.id,
+          userAnswer: answer,
+          history: aiMessages
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      const data = (await response.json()) as StudyGradeResponse;
+      setAiGradeResult(data.grading);
+      setAiSubmittedAnswer(answer);
+      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns);
+      setAiMessages((previous) => [
+        ...previous,
+        { role: "user", content: answer },
+        { role: "assistant", content: data.grading.assistantReply }
+      ]);
+      setAiAnswerInput("");
+      setStatusMessage(`AI graded this answer as ${data.grading.rating} (${data.grading.score}/100).`);
+    } catch {
+      setStatusMessage("Could not grade answer with AI.");
+    } finally {
+      setIsAiGrading(false);
+    }
+  }
+
+  async function submitAiFollowUp() {
+    if (!currentCard || !aiGradeResult) {
+      return;
+    }
+
+    const message = aiFollowUpInput.trim();
+    if (!message) {
+      return;
+    }
+
+    setIsAiFollowUpSending(true);
+    setStatusMessage(null);
+    try {
+      const response = await apiFetch("/study/follow-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          cardId: currentCard.id,
+          userMessage: message,
+          history: aiMessages,
+          userAnswer: aiSubmittedAnswer ?? undefined,
+          feedback: aiGradeResult.feedback,
+          idealAnswer: aiGradeResult.idealAnswer
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      const data = (await response.json()) as StudyFollowUpResponse;
+      setAiMessages((previous) => [
+        ...previous,
+        { role: "user", content: message },
+        { role: "assistant", content: data.assistantMessage }
+      ]);
+      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns);
+      setAiFollowUpInput("");
+    } catch {
+      setStatusMessage("Could not send follow-up message.");
+    } finally {
+      setIsAiFollowUpSending(false);
+    }
+  }
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
@@ -141,7 +284,11 @@ export default function StudyDeckPage() {
         <button type="button" onClick={() => router.push("/dashboard")}>
           Back to Dashboard
         </button>
-        <button type="button" onClick={() => void loadSession()} disabled={isSessionLoading || isSubmitting}>
+        <button
+          type="button"
+          onClick={() => void loadSession()}
+          disabled={isSessionLoading || isSubmitting || isAiGrading || isAiFollowUpSending}
+        >
           Refresh Session
         </button>
       </div>
@@ -162,7 +309,92 @@ export default function StudyDeckPage() {
       {mode === "ai" ? (
         <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, maxWidth: 760 }}>
           <h2 style={{ marginTop: 0 }}>AI Mode</h2>
-          <p>Coming next. This mode will accept free-text answers and provide AI grading + feedback.</p>
+          <p>Due now: {session?.dueNowCount ?? 0}</p>
+
+          {aiRemainingTurns !== null ? <p>Remaining AI chat turns this month: {aiRemainingTurns}</p> : null}
+
+          {isSessionLoading ? <p>Loading cards...</p> : null}
+
+          {!isSessionLoading && !currentCard ? <p>No cards due right now. Come back when more cards are due.</p> : null}
+
+          {!isSessionLoading && currentCard ? (
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <p>
+                <strong>Question:</strong> {currentCard.question}
+              </p>
+
+              {!aiGradeResult ? (
+                <>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span>Your recalled answer</span>
+                    <textarea
+                      rows={5}
+                      value={aiAnswerInput}
+                      onChange={(event) => setAiAnswerInput(event.target.value)}
+                      placeholder="Type your answer from memory..."
+                      disabled={isAiGrading}
+                    />
+                  </label>
+                  <div>
+                    <button type="button" onClick={() => void submitAiGrade()} disabled={isAiGrading}>
+                      {isAiGrading ? "Grading..." : "Grade Answer"}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {aiGradeResult ? (
+                <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 10, background: "#fafafa" }}>
+                  <p style={{ margin: "0 0 8px 0" }}>
+                    <strong>Score:</strong> {aiGradeResult.score}/100 ({aiGradeResult.rating})
+                  </p>
+                  <p style={{ margin: "0 0 8px 0" }}>
+                    <strong>Feedback:</strong> {aiGradeResult.feedback}
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>Ideal answer:</strong> {aiGradeResult.idealAnswer}
+                  </p>
+                </div>
+              ) : null}
+
+              {aiMessages.length > 0 ? (
+                <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 10, maxHeight: 280, overflowY: "auto" }}>
+                  {aiMessages.map((message, index) => (
+                    <p key={`${message.role}-${index}`} style={{ margin: "0 0 8px 0" }}>
+                      <strong>{message.role === "assistant" ? "AI" : "You"}:</strong> {message.content}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+
+              {aiGradeResult ? (
+                <>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span>Ask follow-up</span>
+                    <textarea
+                      rows={3}
+                      value={aiFollowUpInput}
+                      onChange={(event) => setAiFollowUpInput(event.target.value)}
+                      placeholder="Ask why an answer was graded this way, request examples, etc."
+                      disabled={isAiFollowUpSending}
+                    />
+                  </label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => void submitAiFollowUp()} disabled={isAiFollowUpSending}>
+                      {isAiFollowUpSending ? "Sending..." : "Send Follow-up"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void loadSession()}
+                      disabled={isSessionLoading || isAiGrading || isAiFollowUpSending}
+                    >
+                      Next Card
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

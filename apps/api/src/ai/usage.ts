@@ -68,3 +68,41 @@ export async function incrementDocumentGeneration(userId: string) {
     }
   });
 }
+
+export async function ensureChatTurnAvailable(userId: string, monthlyLimit: number) {
+  const { usage } = await getUsageSnapshot(userId);
+  if (usage.chatTurns >= monthlyLimit) {
+    return {
+      allowed: false,
+      remaining: 0,
+      used: usage.chatTurns
+    };
+  }
+  return {
+    allowed: true,
+    remaining: monthlyLimit - usage.chatTurns,
+    used: usage.chatTurns
+  };
+}
+
+export async function incrementChatTurns(userId: string, turns = 1) {
+  const monthKey = getCurrentMonthKey();
+  return prisma.monthlyUsage.upsert({
+    where: {
+      userId_monthKey: {
+        userId,
+        monthKey
+      }
+    },
+    update: {
+      chatTurns: {
+        increment: turns
+      }
+    },
+    create: {
+      userId,
+      monthKey,
+      chatTurns: turns
+    }
+  });
+}

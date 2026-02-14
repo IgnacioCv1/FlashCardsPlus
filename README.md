@@ -39,6 +39,8 @@
   - `POST /ingest/generate-cards` (legacy alias to `generate-preview`)
   - `GET /study/decks/:deckId/session` (due queue + next due date for normal study mode)
   - `POST /study/review` (submit `AGAIN/HARD/GOOD/EASY` and update next due)
+  - `POST /study/grade` (AI grade free-text answer, map score to FSRS rating, persist review)
+  - `POST /study/follow-up` (AI tutoring chat for the current card without rescheduling)
   - `GET /ai/settings` (current plan, model mapping, monthly limits, usage)
 
 Required API env vars:

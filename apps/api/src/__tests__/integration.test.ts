@@ -492,4 +492,63 @@ describe("API integration", () => {
     expect(nextSessionBody.cards).toHaveLength(0);
     expect(nextSessionBody.nextDueAt).toBeTruthy();
   });
+
+  it("grades AI answers, updates FSRS, and supports follow-up chat", async () => {
+    const login = await loginUser("study-ai@test.local");
+
+    const deckResponse = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "AI Study Deck"
+      });
+    expect(deckResponse.status).toBe(201);
+    const deckId = (deckResponse.body as { id: string }).id;
+
+    const answer = "Mitochondria produce ATP through cellular respiration.";
+    const cardResponse = await request(app)
+      .post(`/decks/${deckId}/cards`)
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        question: "What is the main function of mitochondria?",
+        answer
+      });
+    expect(cardResponse.status).toBe(201);
+    const cardId = (cardResponse.body as { id: string }).id;
+
+    const grade = await request(app)
+      .post("/study/grade")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        cardId,
+        userAnswer: answer
+      });
+    expect(grade.status).toBe(201);
+    expect((grade.body as { grading: { score: number } }).grading.score).toBe(100);
+    expect((grade.body as { grading: { rating: string } }).grading.rating).toBe("EASY");
+    expect((grade.body as { scheduleState: { intervalMinutes: number } }).scheduleState.intervalMinutes).toBe(11520);
+    expect((grade.body as { usage: { chatTurns: number } }).usage.chatTurns).toBe(1);
+
+    const followUp = await request(app)
+      .post("/study/follow-up")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        cardId,
+        userMessage: "Can you explain that in simpler words?",
+        userAnswer: answer,
+        feedback: (grade.body as { grading: { feedback: string } }).grading.feedback,
+        idealAnswer: (grade.body as { grading: { idealAnswer: string } }).grading.idealAnswer,
+        history: [
+          { role: "user", content: answer },
+          { role: "assistant", content: (grade.body as { grading: { assistantReply: string } }).grading.assistantReply }
+        ]
+      });
+    expect(followUp.status).toBe(200);
+    expect((followUp.body as { assistantMessage: string }).assistantMessage).toContain("Follow-up guidance");
+    expect((followUp.body as { usage: { chatTurns: number } }).usage.chatTurns).toBe(2);
+
+    const settings = await request(app).get("/ai/settings").set("Authorization", `Bearer ${login.accessToken}`);
+    expect(settings.status).toBe(200);
+    expect((settings.body as { usage: { chatTurns: number } }).usage.chatTurns).toBe(2);
+  });
 });
