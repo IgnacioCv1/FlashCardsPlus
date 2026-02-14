@@ -18,6 +18,7 @@ model User {
   refreshTokens RefreshToken[]
   monthlyUsage  MonthlyUsage[]
   ingestionDrafts IngestionDraft[]
+  reviews       Review[]
 }
 
 model Deck {
@@ -30,6 +31,7 @@ model Deck {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cards       Card[]
   ingestionDrafts IngestionDraft[]
+  reviews       Review[]
 
   @@index([userId])
 }
@@ -42,8 +44,52 @@ model Card {
   updatedAt DateTime @updatedAt
   deckId    String
   deck      Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  scheduleState ScheduleState?
+  reviews   Review[]
 
   @@index([deckId])
+}
+
+model ScheduleState {
+  id              String   @id @default(cuid())
+  cardId          String   @unique
+  card            Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  dueAt           DateTime
+  lastReviewedAt  DateTime?
+  intervalMinutes Int      @default(0)
+  repetitions     Int      @default(0)
+  easeFactor      Float    @default(2.5)
+  fsrsState       Int      @default(0)
+  fsrsStability   Float    @default(0)
+  fsrsDifficulty  Float    @default(0)
+  fsrsElapsedDays Int      @default(0)
+  fsrsScheduledDays Int    @default(0)
+  fsrsLearningSteps Int    @default(0)
+  fsrsLapses      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([dueAt])
+}
+
+model Review {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deckId           String
+  deck             Deck         @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  cardId           String
+  card             Card         @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  rating           ReviewRating
+  previousDueAt    DateTime?
+  scheduledDueAt   DateTime
+  previousInterval Int
+  nextInterval     Int
+  createdAt        DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([deckId, createdAt])
+  @@index([cardId, createdAt])
 }
 
 model RefreshToken {
@@ -136,4 +182,11 @@ enum IngestionDraftStatus {
   PENDING
   COMMITTED
   DISCARDED
+}
+
+enum ReviewRating {
+  AGAIN
+  HARD
+  GOOD
+  EASY
 }

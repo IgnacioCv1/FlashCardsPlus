@@ -413,4 +413,83 @@ describe("API integration", () => {
     expect((ingest.body as { preview: { plan: string } }).preview.plan).toBe("PRO");
     expect((ingest.body as { preview: { modelUsed: string } }).preview.modelUsed).toBe("gemini-2.5-flash");
   });
+
+  it("returns due study session cards and updates schedule after review", async () => {
+    const login = await loginUser("study-user@test.local");
+
+    const deckResponse = await request(app)
+      .post("/decks")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        title: "Study Deck"
+      });
+    expect(deckResponse.status).toBe(201);
+    const deckId = (deckResponse.body as { id: string }).id;
+
+    const cardOne = await request(app)
+      .post(`/decks/${deckId}/cards`)
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        question: "Q1",
+        answer: "A1"
+      });
+    expect(cardOne.status).toBe(201);
+    const cardOneId = (cardOne.body as { id: string }).id;
+
+    const cardTwo = await request(app)
+      .post(`/decks/${deckId}/cards`)
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        question: "Q2",
+        answer: "A2"
+      });
+    expect(cardTwo.status).toBe(201);
+    const cardTwoId = (cardTwo.body as { id: string }).id;
+
+    const initialSession = await request(app)
+      .get(`/study/decks/${deckId}/session`)
+      .set("Authorization", `Bearer ${login.accessToken}`);
+    expect(initialSession.status).toBe(200);
+    const initialSessionBody = initialSession.body as {
+      dueNowCount: number;
+      cards: Array<{ id: string }>;
+    };
+    expect(initialSessionBody.dueNowCount).toBe(2);
+    expect(initialSessionBody.cards).toHaveLength(2);
+
+    const reviewOne = await request(app)
+      .post("/study/review")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        cardId: cardOneId,
+        rating: "GOOD"
+      });
+    expect(reviewOne.status).toBe(201);
+    expect((reviewOne.body as { scheduleState: { intervalMinutes: number } }).scheduleState.intervalMinutes).toBe(
+      10
+    );
+
+    const reviewTwo = await request(app)
+      .post("/study/review")
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        cardId: cardTwoId,
+        rating: "AGAIN"
+      });
+    expect(reviewTwo.status).toBe(201);
+    expect((reviewTwo.body as { scheduleState: { intervalMinutes: number } }).scheduleState.intervalMinutes).toBe(1);
+
+    const nextSession = await request(app)
+      .get(`/study/decks/${deckId}/session`)
+      .set("Authorization", `Bearer ${login.accessToken}`);
+    expect(nextSession.status).toBe(200);
+    const nextSessionBody = nextSession.body as {
+      dueNowCount: number;
+      cards: Array<{ id: string }>;
+      nextDueAt: string | null;
+    };
+    expect(nextSessionBody.dueNowCount).toBe(0);
+    expect(nextSessionBody.cards).toHaveLength(0);
+    expect(nextSessionBody.nextDueAt).toBeTruthy();
+  });
 });

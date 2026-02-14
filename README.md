@@ -23,6 +23,7 @@
 - Protected routes:
   - `/decks/*`
   - `/cards/*`
+  - `/study/*`
 - Auth endpoints:
   - `POST /auth/dev-login` (development only)
   - `POST /auth/dev-set-plan` (development only)
@@ -36,6 +37,8 @@
   - `POST /ingest/previews/:previewId/commit` (commit reviewed cards to deck)
   - `DELETE /ingest/previews/:previewId` (discard draft preview)
   - `POST /ingest/generate-cards` (legacy alias to `generate-preview`)
+  - `GET /study/decks/:deckId/session` (due queue + next due date for normal study mode)
+  - `POST /study/review` (submit `AGAIN/HARD/GOOD/EASY` and update next due)
   - `GET /ai/settings` (current plan, model mapping, monthly limits, usage)
 
 Required API env vars:

@@ -171,10 +171,13 @@ export default function DashboardPage() {
     setDecks(nextDecks);
 
     const requestedDeckId = preferredDeckId === undefined ? activeDeckId : preferredDeckId;
-    const deckToUse =
-      requestedDeckId && nextDecks.some((deck) => deck.id === requestedDeckId)
-        ? requestedDeckId
-        : (nextDecks[0]?.id ?? null);
+    let deckToUse: string | null = null;
+    if (requestedDeckId && nextDecks.some((deck) => deck.id === requestedDeckId)) {
+      deckToUse = requestedDeckId;
+    } else if (preferredDeckId !== undefined) {
+      deckToUse = nextDecks[0]?.id ?? null;
+    }
+
     setActiveDeckId(deckToUse);
     return deckToUse;
   }
@@ -366,6 +369,9 @@ export default function DashboardPage() {
       const nextDeck = decks.find((deck) => deck.id !== deckId)?.id ?? null;
       const nextDeckId = await loadDecks(nextDeck);
       await loadCards(nextDeckId);
+      if (activeDeckId === deckId) {
+        setActiveDeckId(nextDeckId);
+      }
       setStatusMessage("Deck deleted.");
     } catch {
       setStatusMessage("Could not delete deck.");
@@ -741,21 +747,16 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => setActiveDeckId(deck.id)}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        display: "block",
-                        width: "100%"
-                      }}
-                    >
-                      <strong>{deck.title}</strong>
-                      <p>{deck.description ?? "No description"}</p>
-                      <p>Cards: {deck._count?.cards ?? 0}</p>
-                    </button>
+                    <strong>{deck.title}</strong>
+                    <p>{deck.description ?? "No description"}</p>
+                    <p>Cards: {deck._count?.cards ?? 0}</p>
                     <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={() => setActiveDeckId(deck.id)} disabled={isBusy}>
+                        {activeDeckId === deck.id ? "Opened" : "Open Deck"}
+                      </button>
+                      <button type="button" onClick={() => router.push(`/dashboard/study/${deck.id}`)} disabled={isBusy}>
+                        Study
+                      </button>
                       <button type="button" onClick={() => startDeckEdit(deck)} disabled={isBusy}>
                         Edit Deck
                       </button>
@@ -773,9 +774,18 @@ export default function DashboardPage() {
 
       <section style={{ marginTop: 24 }}>
         <h2>Cards {activeDeck ? `in "${activeDeck.title}"` : ""}</h2>
-        {!activeDeck ? <p>Select a deck to view cards.</p> : null}
+        {!activeDeck ? <p>Use "Open Deck" to view and edit cards.</p> : null}
         {activeDeck ? (
           <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <button type="button" onClick={() => router.push(`/dashboard/study/${activeDeck.id}`)}>
+                Study This Deck
+              </button>
+              <button type="button" onClick={() => setActiveDeckId(null)}>
+                Close Deck
+              </button>
+            </div>
+
             <form
               onSubmit={handleGenerateFromDocument}
               style={{ display: "grid", gap: 8, maxWidth: 640, marginBottom: 24, border: "1px solid #ddd", borderRadius: 8, padding: 12 }}

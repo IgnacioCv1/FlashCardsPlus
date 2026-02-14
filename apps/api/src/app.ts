@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth.js";
 import { cardsRouter } from "./routes/cards.js";
 import { decksRouter } from "./routes/decks.js";
 import { ingestRouter } from "./routes/ingest.js";
+import { studyRouter } from "./routes/study.js";
 
 export function createApp() {
   const app = express();
@@ -50,6 +51,7 @@ export function createApp() {
   app.use("/decks", requireAuth, decksRouter);
   app.use("/cards", requireAuth, cardsRouter);
   app.use("/ingest", requireAuth, ingestRouter);
+  app.use("/study", requireAuth, studyRouter);
 
   app.use(errorHandler);
   return app;
