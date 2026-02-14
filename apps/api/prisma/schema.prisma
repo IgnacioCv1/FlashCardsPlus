@@ -17,6 +17,7 @@ model User {
   decks         Deck[]
   refreshTokens RefreshToken[]
   monthlyUsage  MonthlyUsage[]
+  ingestionDrafts IngestionDraft[]
 }
 
 model Deck {
@@ -28,6 +29,7 @@ model Deck {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cards       Card[]
+  ingestionDrafts IngestionDraft[]
 
   @@index([userId])
 }
@@ -90,7 +92,48 @@ model MonthlyUsage {
   @@index([monthKey])
 }
 
+model IngestionDraft {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deckId      String
+  deck        Deck                @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  status      IngestionDraftStatus @default(PENDING)
+  filename    String
+  mimeType    String
+  plan        PlanTier
+  modelUsed   String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  expiresAt   DateTime
+  committedAt DateTime?
+  cards       IngestionDraftCard[]
+
+  @@index([userId, status])
+  @@index([deckId, status])
+  @@index([expiresAt])
+}
+
+model IngestionDraftCard {
+  id        String         @id @default(cuid())
+  draftId   String
+  draft     IngestionDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  position  Int
+  question  String
+  answer    String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([draftId, position])
+}
+
 enum PlanTier {
   FREE
   PRO
+}
+
+enum IngestionDraftStatus {
+  PENDING
+  COMMITTED
+  DISCARDED
 }

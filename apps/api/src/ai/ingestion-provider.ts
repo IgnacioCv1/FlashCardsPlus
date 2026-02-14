@@ -5,7 +5,7 @@ export interface GenerateCardsInput {
   filename: string;
   mimeType: string;
   fileBuffer: Buffer;
-  targetCards: number;
+  targetCards?: number;
   model: string;
 }
 
@@ -21,7 +21,8 @@ export interface IngestionProvider {
 class MockIngestionProvider implements IngestionProvider {
   async generateCardsFromDocument(input: GenerateCardsInput): Promise<GeneratedCard[]> {
     const base = input.filename.replace(/\.[^/.]+$/, "").trim() || "Document";
-    return Array.from({ length: input.targetCards }, (_, index) => {
+    const count = input.targetCards ?? 8;
+    return Array.from({ length: count }, (_, index) => {
       const number = index + 1;
       return {
         question: `${base}: Key concept ${number}?`,
@@ -37,9 +38,13 @@ class GeminiIngestionProvider implements IngestionProvider {
       throw new AppError("Missing GEMINI_API_KEY for Gemini provider", 500);
     }
 
+    const cardCountInstruction = input.targetCards
+      ? `Create exactly ${input.targetCards} high-quality flashcards from the provided document.`
+      : "Choose the number of flashcards needed to cover the most important concepts (usually 6 to 18).";
+
     const prompt = [
       "You are an educational assistant.",
-      `Create exactly ${input.targetCards} high-quality flashcards from the provided document.`,
+      cardCountInstruction,
       "Return ONLY valid JSON in this exact shape:",
       '{"cards":[{"question":"...","answer":"..."}]}',
       "Rules:",
@@ -103,7 +108,7 @@ class GeminiIngestionProvider implements IngestionProvider {
         answer: card.answer.trim()
       }))
       .filter((card) => card.question.length > 0 && card.answer.length > 0)
-      .slice(0, input.targetCards);
+      .slice(0, input.targetCards ?? 30);
   }
 }
 

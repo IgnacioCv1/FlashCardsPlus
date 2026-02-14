@@ -219,7 +219,7 @@ describe("API integration", () => {
     expect(callback2.headers.location).toContain("Invalid+OAuth+state");
   });
 
-  it("generates cards from uploaded document into owned deck", async () => {
+  it("generates preview cards and only persists after commit", async () => {
     const login = await loginUser("ingest-owner@test.local");
 
     const deck = await request(app)
@@ -234,7 +234,7 @@ describe("API integration", () => {
 
     const fileBuffer = Buffer.from("Sample PDF bytes for testing");
     const ingest = await request(app)
-      .post("/ingest/generate-cards")
+      .post("/ingest/generate-preview")
       .set("Authorization", `Bearer ${login.accessToken}`)
       .field("deckId", deckId)
       .field("targetCards", "5")
@@ -244,13 +244,47 @@ describe("API integration", () => {
       });
 
     expect(ingest.status).toBe(201);
-    expect((ingest.body as { createdCount: number }).createdCount).toBe(5);
+    const ingestBody = ingest.body as {
+      generatedCount: number;
+      preview: {
+        id: string;
+        cards: Array<{
+          id: string;
+          question: string;
+          answer: string;
+        }>;
+      };
+    };
+    expect(ingestBody.generatedCount).toBe(5);
+    expect(ingestBody.preview.cards).toHaveLength(5);
 
-    const listCards = await request(app)
+    const beforeCommit = await request(app)
       .get(`/decks/${deckId}/cards`)
       .set("Authorization", `Bearer ${login.accessToken}`);
-    expect(listCards.status).toBe(200);
-    expect((listCards.body as unknown[]).length).toBe(5);
+    expect(beforeCommit.status).toBe(200);
+    expect((beforeCommit.body as unknown[]).length).toBe(0);
+
+    const commit = await request(app)
+      .post(`/ingest/previews/${ingestBody.preview.id}/commit`)
+      .set("Authorization", `Bearer ${login.accessToken}`)
+      .send({
+        cards: ingestBody.preview.cards.map((card, index) => ({
+          id: card.id,
+          keep: true,
+          question: index === 0 ? `${card.question} (edited)` : card.question,
+          answer: card.answer
+        }))
+      });
+    expect(commit.status).toBe(201);
+    expect((commit.body as { committedCount: number }).committedCount).toBe(5);
+
+    const afterCommit = await request(app)
+      .get(`/decks/${deckId}/cards`)
+      .set("Authorization", `Bearer ${login.accessToken}`);
+    expect(afterCommit.status).toBe(200);
+    const committedCards = afterCommit.body as Array<{ question: string }>;
+    expect(committedCards).toHaveLength(5);
+    expect(committedCards.some((card) => card.question.includes("(edited)"))).toBe(true);
   });
 
   it("rejects ingest for deck not owned by current user", async () => {
@@ -268,7 +302,7 @@ describe("API integration", () => {
     const deckId = (deck.body as { id: string }).id;
 
     const ingest = await request(app)
-      .post("/ingest/generate-cards")
+      .post("/ingest/generate-preview")
       .set("Authorization", `Bearer ${otherUser.accessToken}`)
       .field("deckId", deckId)
       .attach("file", Buffer.from("x"), {
@@ -293,7 +327,7 @@ describe("API integration", () => {
     const deckId = (deck.body as { id: string }).id;
 
     const ingest = await request(app)
-      .post("/ingest/generate-cards")
+      .post("/ingest/generate-preview")
       .set("Authorization", `Bearer ${login.accessToken}`)
       .field("deckId", deckId)
       .attach("file", Buffer.from("malicious"), {
@@ -319,7 +353,7 @@ describe("API integration", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const ingest = await request(app)
-        .post("/ingest/generate-cards")
+        .post("/ingest/generate-preview")
         .set("Authorization", `Bearer ${login.accessToken}`)
         .field("deckId", deckId)
         .attach("file", Buffer.from("pdf"), {
@@ -328,12 +362,12 @@ describe("API integration", () => {
         });
 
       expect(ingest.status).toBe(201);
-      expect((ingest.body as { plan: string }).plan).toBe("FREE");
-      expect((ingest.body as { modelUsed: string }).modelUsed).toBe("gemini-2.5-flash-lite");
+      expect((ingest.body as { preview: { plan: string } }).preview.plan).toBe("FREE");
+      expect((ingest.body as { preview: { modelUsed: string } }).preview.modelUsed).toBe("gemini-2.5-flash-lite");
     }
 
     const blocked = await request(app)
-      .post("/ingest/generate-cards")
+      .post("/ingest/generate-preview")
       .set("Authorization", `Bearer ${login.accessToken}`)
       .field("deckId", deckId)
       .attach("file", Buffer.from("pdf"), {
@@ -368,7 +402,7 @@ describe("API integration", () => {
     const deckId = (deck.body as { id: string }).id;
 
     const ingest = await request(app)
-      .post("/ingest/generate-cards")
+      .post("/ingest/generate-preview")
       .set("Authorization", `Bearer ${login.accessToken}`)
       .field("deckId", deckId)
       .attach("file", Buffer.from("pdf"), {
@@ -376,7 +410,7 @@ describe("API integration", () => {
         contentType: "application/pdf"
       });
     expect(ingest.status).toBe(201);
-    expect((ingest.body as { plan: string }).plan).toBe("PRO");
-    expect((ingest.body as { modelUsed: string }).modelUsed).toBe("gemini-2.5-flash");
+    expect((ingest.body as { preview: { plan: string } }).preview.plan).toBe("PRO");
+    expect((ingest.body as { preview: { modelUsed: string } }).preview.modelUsed).toBe("gemini-2.5-flash");
   });
 });

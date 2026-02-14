@@ -31,7 +31,11 @@
   - `POST /auth/refresh`
   - `POST /auth/logout`
   - `GET /auth/me`
-  - `POST /ingest/generate-cards` (upload PDF/DOCX and generate cards directly)
+  - `POST /ingest/generate-preview` (upload PDF/DOCX and create draft preview)
+  - `GET /ingest/previews/:previewId` (load pending draft preview)
+  - `POST /ingest/previews/:previewId/commit` (commit reviewed cards to deck)
+  - `DELETE /ingest/previews/:previewId` (discard draft preview)
+  - `POST /ingest/generate-cards` (legacy alias to `generate-preview`)
   - `GET /ai/settings` (current plan, model mapping, monthly limits, usage)
 
 Required API env vars:
@@ -43,6 +47,7 @@ Required API env vars:
 - `GOOGLE_REDIRECT_URI` (e.g. `http://localhost:4000/auth/google/callback`)
 - `WEB_AUTH_SUCCESS_REDIRECT` (e.g. `http://localhost:3000/auth/callback`)
 - `WEB_AUTH_FAILURE_REDIRECT` (e.g. `http://localhost:3000/login`)
+- `INGEST_DRAFT_CLEANUP_INTERVAL_MINUTES` (default `60`, auto-deletes expired drafts)
 - `AI_INGEST_PROVIDER` (`gemini` or `mock`)
 - `GEMINI_API_KEY` (required when `AI_INGEST_PROVIDER=gemini`)
 
