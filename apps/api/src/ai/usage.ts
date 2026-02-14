@@ -1,3 +1,4 @@
+import { env } from "../config/env.js";
 import { prisma } from "../lib/prisma.js";
 
 export function getCurrentMonthKey(now = new Date()): string {
@@ -22,6 +23,22 @@ async function getOrCreateMonthlyUsage(userId: string, monthKey: string) {
   });
 }
 
+const devUnlimitedTesterEmails = new Set(
+  env.DEV_UNLIMITED_TESTER_EMAILS.split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0)
+);
+
+export function isUsageLimitBypassedForEmail(email?: string | null): boolean {
+  if (env.NODE_ENV === "production") {
+    return false;
+  }
+  if (!email) {
+    return false;
+  }
+  return devUnlimitedTesterEmails.has(email.trim().toLowerCase());
+}
+
 export async function getUsageSnapshot(userId: string) {
   const monthKey = getCurrentMonthKey();
   const usage = await getOrCreateMonthlyUsage(userId, monthKey);
@@ -31,7 +48,20 @@ export async function getUsageSnapshot(userId: string) {
   };
 }
 
-export async function ensureDocumentGenerationAvailable(userId: string, monthlyLimit: number) {
+export async function ensureDocumentGenerationAvailable(
+  userId: string,
+  monthlyLimit: number,
+  options?: { bypassLimit?: boolean }
+) {
+  if (options?.bypassLimit) {
+    const { usage } = await getUsageSnapshot(userId);
+    return {
+      allowed: true,
+      remaining: null,
+      used: usage.documentGenerations
+    };
+  }
+
   const { usage } = await getUsageSnapshot(userId);
   if (usage.documentGenerations >= monthlyLimit) {
     return {
@@ -47,7 +77,12 @@ export async function ensureDocumentGenerationAvailable(userId: string, monthlyL
   };
 }
 
-export async function incrementDocumentGeneration(userId: string) {
+export async function incrementDocumentGeneration(userId: string, options?: { bypassLimit?: boolean }) {
+  if (options?.bypassLimit) {
+    const { usage } = await getUsageSnapshot(userId);
+    return usage;
+  }
+
   const monthKey = getCurrentMonthKey();
   return prisma.monthlyUsage.upsert({
     where: {
@@ -69,7 +104,20 @@ export async function incrementDocumentGeneration(userId: string) {
   });
 }
 
-export async function ensureChatTurnAvailable(userId: string, monthlyLimit: number) {
+export async function ensureChatTurnAvailable(
+  userId: string,
+  monthlyLimit: number,
+  options?: { bypassLimit?: boolean }
+) {
+  if (options?.bypassLimit) {
+    const { usage } = await getUsageSnapshot(userId);
+    return {
+      allowed: true,
+      remaining: null,
+      used: usage.chatTurns
+    };
+  }
+
   const { usage } = await getUsageSnapshot(userId);
   if (usage.chatTurns >= monthlyLimit) {
     return {
@@ -85,7 +133,12 @@ export async function ensureChatTurnAvailable(userId: string, monthlyLimit: numb
   };
 }
 
-export async function incrementChatTurns(userId: string, turns = 1) {
+export async function incrementChatTurns(userId: string, turns = 1, options?: { bypassLimit?: boolean }) {
+  if (options?.bypassLimit) {
+    const { usage } = await getUsageSnapshot(userId);
+    return usage;
+  }
+
   const monthKey = getCurrentMonthKey();
   return prisma.monthlyUsage.upsert({
     where: {

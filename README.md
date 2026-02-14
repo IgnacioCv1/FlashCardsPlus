@@ -55,6 +55,7 @@ Required API env vars:
 - `INGEST_DRAFT_CLEANUP_INTERVAL_MINUTES` (default `60`, auto-deletes expired drafts)
 - `AI_INGEST_PROVIDER` (`gemini` or `mock`)
 - `GEMINI_API_KEY` (required when `AI_INGEST_PROVIDER=gemini`)
+- `DEV_UNLIMITED_TESTER_EMAILS` (optional, comma-separated emails that bypass monthly AI limits in non-production)
 
 Current plan tiers:
 - `FREE`: document generation model `gemini-2.5-flash-lite`, up to 3 document generations/month

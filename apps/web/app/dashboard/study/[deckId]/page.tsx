@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 
 interface StudySessionCard {
@@ -21,6 +22,7 @@ interface StudySessionResponse {
   deck: {
     id: string;
     title: string;
+    description: string | null;
   };
   dueNowCount: number;
   nextDueAt: string | null;
@@ -43,7 +45,7 @@ interface StudyGradeResponse {
   };
   usage: {
     chatTurns: number;
-    remainingMonthlyChatTurns: number;
+    remainingMonthlyChatTurns: number | null;
   };
 }
 
@@ -52,7 +54,7 @@ interface StudyFollowUpResponse {
   assistantMessage: string;
   usage: {
     chatTurns: number;
-    remainingMonthlyChatTurns: number;
+    remainingMonthlyChatTurns: number | null;
   };
 }
 
@@ -62,6 +64,7 @@ type ReviewRating = "AGAIN" | "HARD" | "GOOD" | "EASY";
 export default function StudyDeckPage() {
   const params = useParams<{ deckId: string }>();
   const deckId = typeof params.deckId === "string" ? params.deckId : "";
+  const pathname = usePathname();
   const router = useRouter();
   const { user, isLoading, apiFetch } = useAuth();
 
@@ -77,7 +80,7 @@ export default function StudyDeckPage() {
   const [aiSubmittedAnswer, setAiSubmittedAnswer] = useState<string | null>(null);
   const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
   const [aiGradeResult, setAiGradeResult] = useState<StudyGradeResponse["grading"] | null>(null);
-  const [aiRemainingTurns, setAiRemainingTurns] = useState<number | null>(null);
+  const [aiRemainingTurns, setAiRemainingTurns] = useState<number | "unlimited" | null>(null);
   const [isAiGrading, setIsAiGrading] = useState(false);
   const [isAiFollowUpSending, setIsAiFollowUpSending] = useState(false);
 
@@ -195,7 +198,7 @@ export default function StudyDeckPage() {
       const data = (await response.json()) as StudyGradeResponse;
       setAiGradeResult(data.grading);
       setAiSubmittedAnswer(answer);
-      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns);
+      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns === null ? "unlimited" : data.usage.remainingMonthlyChatTurns);
       setAiMessages((previous) => [
         ...previous,
         { role: "user", content: answer },
@@ -247,7 +250,7 @@ export default function StudyDeckPage() {
         { role: "user", content: message },
         { role: "assistant", content: data.assistantMessage }
       ]);
-      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns);
+      setAiRemainingTurns(data.usage.remainingMonthlyChatTurns === null ? "unlimited" : data.usage.remainingMonthlyChatTurns);
       setAiFollowUpInput("");
     } catch {
       setStatusMessage("Could not send follow-up message.");
@@ -280,21 +283,40 @@ export default function StudyDeckPage() {
 
   return (
     <main style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => router.push("/dashboard")}>
-          Back to Dashboard
-        </button>
-        <button
-          type="button"
-          onClick={() => void loadSession()}
-          disabled={isSessionLoading || isSubmitting || isAiGrading || isAiFollowUpSending}
-        >
-          Refresh Session
-        </button>
+      <div className="dashboard-topbar" style={{ marginBottom: 14 }}>
+        <Link href="/" className="dashboard-brand">
+          <img className="brand-logo" src="/flashcards-plus-logo-white.svg" alt="FlashCards Plus" />
+        </Link>
+        <nav className="dashboard-nav">
+          <Link href="/" className={`dashboard-nav-link${pathname === "/" ? " dashboard-nav-link--active" : ""}`}>
+            Home
+          </Link>
+          <Link
+            href="/dashboard"
+            className={`dashboard-nav-link${pathname.startsWith("/dashboard") ? " dashboard-nav-link--active" : ""}`}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href={`/dashboard/decks/${deckId}`}
+            className={`dashboard-nav-link${pathname.startsWith(`/dashboard/decks/${deckId}`) ? " dashboard-nav-link--active" : ""}`}
+          >
+            Deck Workspace
+          </Link>
+        </nav>
+        <div className="dashboard-topbar-actions">
+          <button
+            type="button"
+            onClick={() => void loadSession()}
+            disabled={isSessionLoading || isSubmitting || isAiGrading || isAiFollowUpSending}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
-      <h1>Study</h1>
-      <p>Deck: {session?.deck.title ?? "..."}</p>
+      <h1>{session?.deck.title ? `Studying ${session.deck.title}` : "Studying"}</h1>
+      {session?.deck.description ? <p>{session.deck.description}</p> : null}
       <p>{statusMessage ?? " "}</p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -311,7 +333,7 @@ export default function StudyDeckPage() {
           <h2 style={{ marginTop: 0 }}>AI Mode</h2>
           <p>Due now: {session?.dueNowCount ?? 0}</p>
 
-          {aiRemainingTurns !== null ? <p>Remaining AI chat turns this month: {aiRemainingTurns}</p> : null}
+          {aiRemainingTurns !== null ? <p>Remaining AI chat turns this month: {aiRemainingTurns === "unlimited" ? "Unlimited" : aiRemainingTurns}</p> : null}
 
           {isSessionLoading ? <p>Loading cards...</p> : null}
 
@@ -344,23 +366,23 @@ export default function StudyDeckPage() {
               ) : null}
 
               {aiGradeResult ? (
-                <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 10, background: "#fafafa" }}>
-                  <p style={{ margin: "0 0 8px 0" }}>
+                <div className="study-ai-result">
+                  <p>
                     <strong>Score:</strong> {aiGradeResult.score}/100 ({aiGradeResult.rating})
                   </p>
-                  <p style={{ margin: "0 0 8px 0" }}>
+                  <p>
                     <strong>Feedback:</strong> {aiGradeResult.feedback}
                   </p>
-                  <p style={{ margin: 0 }}>
+                  <p>
                     <strong>Ideal answer:</strong> {aiGradeResult.idealAnswer}
                   </p>
                 </div>
               ) : null}
 
               {aiMessages.length > 0 ? (
-                <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 10, maxHeight: 280, overflowY: "auto" }}>
+                <div className="study-ai-chat-log">
                   {aiMessages.map((message, index) => (
-                    <p key={`${message.role}-${index}`} style={{ margin: "0 0 8px 0" }}>
+                    <p key={`${message.role}-${index}`}>
                       <strong>{message.role === "assistant" ? "AI" : "You"}:</strong> {message.content}
                     </p>
                   ))}
@@ -402,10 +424,6 @@ export default function StudyDeckPage() {
         <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, maxWidth: 760 }}>
           <h2 style={{ marginTop: 0 }}>Normal Mode</h2>
           <p>Due now: {session?.dueNowCount ?? 0}</p>
-          <p>
-            Next due:{" "}
-            {session?.nextDueAt ? new Date(session.nextDueAt).toLocaleString() : "No scheduled reviews yet"}
-          </p>
 
           {isSessionLoading ? <p>Loading cards...</p> : null}
 
@@ -415,19 +433,29 @@ export default function StudyDeckPage() {
 
           {!isSessionLoading && currentCard ? (
             <div style={{ marginTop: 12 }}>
-              <p>
-                <strong>Question:</strong> {currentCard.question}
-              </p>
+              <div className="study-qa-box">
+                <p style={{ margin: "0 0 6px 0" }}>
+                  <strong>Question</strong>
+                </p>
+                <p style={{ margin: 0 }}>{currentCard.question}</p>
+              </div>
+
+              {!isAnswerRevealed ? (
+                <div style={{ marginTop: 10, marginBottom: 10 }}>
+                  <button type="button" onClick={() => setIsAnswerRevealed(true)} disabled={isSubmitting}>
+                    Reveal Answer
+                  </button>
+                </div>
+              ) : null}
 
               {isAnswerRevealed ? (
-                <p>
-                  <strong>Answer:</strong> {currentCard.answer}
-                </p>
-              ) : (
-                <button type="button" onClick={() => setIsAnswerRevealed(true)} disabled={isSubmitting}>
-                  Reveal Answer
-                </button>
-              )}
+                <div className="study-qa-box" style={{ marginTop: 10 }}>
+                  <p style={{ margin: "0 0 6px 0" }}>
+                    <strong>Answer</strong>
+                  </p>
+                  <p style={{ margin: 0 }}>{currentCard.answer}</p>
+                </div>
+              ) : null}
 
               {isAnswerRevealed ? (
                 <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>

@@ -11,7 +11,7 @@ import {
 } from "ts-fsrs";
 import { getPlanPolicy } from "../ai/policy.js";
 import { getStudyAiProvider, type StudyChatMessage } from "../ai/study-provider.js";
-import { ensureChatTurnAvailable, incrementChatTurns } from "../ai/usage.js";
+import { ensureChatTurnAvailable, incrementChatTurns, isUsageLimitBypassedForEmail } from "../ai/usage.js";
 import { AppError } from "../errors/app-error.js";
 import { prisma } from "../lib/prisma.js";
 import type { AuthenticatedLocals } from "../middleware/require-auth.js";
@@ -152,7 +152,8 @@ async function getOwnedCardForStudy(userId: string, cardId: string) {
           id: true,
           user: {
             select: {
-              plan: true
+              plan: true,
+              email: true
             }
           }
         }
@@ -258,7 +259,8 @@ studyRouter.get(
       },
       select: {
         id: true,
-        title: true
+        title: true,
+        description: true
       }
     });
 
@@ -456,7 +458,10 @@ studyRouter.post(
     }
 
     const planPolicy = getPlanPolicy(card.deck.user.plan);
-    const quotaCheck = await ensureChatTurnAvailable(userId, planPolicy.monthlyChatTurns);
+    const bypassUsageLimit = isUsageLimitBypassedForEmail(card.deck.user.email);
+    const quotaCheck = await ensureChatTurnAvailable(userId, planPolicy.monthlyChatTurns, {
+      bypassLimit: bypassUsageLimit
+    });
     if (!quotaCheck.allowed) {
       throw new AppError("Monthly AI chat turn limit reached for current plan", 403);
     }
@@ -479,7 +484,9 @@ studyRouter.post(
       rating,
       now
     });
-    const usage = await incrementChatTurns(userId);
+    const usage = await incrementChatTurns(userId, 1, {
+      bypassLimit: bypassUsageLimit
+    });
 
     res.status(201).json({
       cardId: card.id,
@@ -507,7 +514,7 @@ studyRouter.post(
       },
       usage: {
         chatTurns: usage.chatTurns,
-        remainingMonthlyChatTurns: Math.max(0, planPolicy.monthlyChatTurns - usage.chatTurns)
+        remainingMonthlyChatTurns: bypassUsageLimit ? null : Math.max(0, planPolicy.monthlyChatTurns - usage.chatTurns)
       }
     });
   })
@@ -525,7 +532,10 @@ studyRouter.post(
     }
 
     const planPolicy = getPlanPolicy(card.deck.user.plan);
-    const quotaCheck = await ensureChatTurnAvailable(userId, planPolicy.monthlyChatTurns);
+    const bypassUsageLimit = isUsageLimitBypassedForEmail(card.deck.user.email);
+    const quotaCheck = await ensureChatTurnAvailable(userId, planPolicy.monthlyChatTurns, {
+      bypassLimit: bypassUsageLimit
+    });
     if (!quotaCheck.allowed) {
       throw new AppError("Monthly AI chat turn limit reached for current plan", 403);
     }
@@ -540,14 +550,16 @@ studyRouter.post(
       idealAnswer: payload.idealAnswer,
       model: planPolicy.gradingChatModel
     });
-    const usage = await incrementChatTurns(userId);
+    const usage = await incrementChatTurns(userId, 1, {
+      bypassLimit: bypassUsageLimit
+    });
 
     res.json({
       cardId: card.id,
       assistantMessage,
       usage: {
         chatTurns: usage.chatTurns,
-        remainingMonthlyChatTurns: Math.max(0, planPolicy.monthlyChatTurns - usage.chatTurns)
+        remainingMonthlyChatTurns: bypassUsageLimit ? null : Math.max(0, planPolicy.monthlyChatTurns - usage.chatTurns)
       }
     });
   })

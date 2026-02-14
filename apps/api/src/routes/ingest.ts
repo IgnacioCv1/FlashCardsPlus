@@ -3,7 +3,11 @@ import multer from "multer";
 import { z } from "zod";
 import { getIngestionProvider } from "../ai/ingestion-provider.js";
 import { getPlanPolicy } from "../ai/policy.js";
-import { ensureDocumentGenerationAvailable, incrementDocumentGeneration } from "../ai/usage.js";
+import {
+  ensureDocumentGenerationAvailable,
+  incrementDocumentGeneration,
+  isUsageLimitBypassedForEmail
+} from "../ai/usage.js";
 import { AppError } from "../errors/app-error.js";
 import { deleteExpiredIngestionDrafts } from "../ingest/draft-cleanup.js";
 import { prisma } from "../lib/prisma.js";
@@ -64,7 +68,8 @@ async function getOwnedDeck(userId: string, deckId: string) {
       id: true,
       user: {
         select: {
-          plan: true
+          plan: true,
+          email: true
         }
       }
     }
@@ -126,8 +131,11 @@ async function handleGeneratePreview(req: Request, res: Response) {
 
   const deck = await getOwnedDeck(userId, payload.deckId);
   const plan = deck.user.plan;
+  const bypassUsageLimit = isUsageLimitBypassedForEmail(deck.user.email);
   const planPolicy = getPlanPolicy(plan);
-  const quotaCheck = await ensureDocumentGenerationAvailable(userId, planPolicy.monthlyDocumentGenerations);
+  const quotaCheck = await ensureDocumentGenerationAvailable(userId, planPolicy.monthlyDocumentGenerations, {
+    bypassLimit: bypassUsageLimit
+  });
   if (!quotaCheck.allowed) {
     throw new AppError("Monthly document generation limit reached for current plan", 403);
   }
@@ -169,7 +177,9 @@ async function handleGeneratePreview(req: Request, res: Response) {
     }
   });
 
-  const usage = await incrementDocumentGeneration(userId);
+  const usage = await incrementDocumentGeneration(userId, {
+    bypassLimit: bypassUsageLimit
+  });
 
   res.status(201).json({
     preview: {
@@ -185,7 +195,9 @@ async function handleGeneratePreview(req: Request, res: Response) {
       cards: preview.cards
     },
     generatedCount: preview.cards.length,
-    remainingMonthlyDocumentGenerations: Math.max(0, planPolicy.monthlyDocumentGenerations - usage.documentGenerations)
+    remainingMonthlyDocumentGenerations: bypassUsageLimit
+      ? null
+      : Math.max(0, planPolicy.monthlyDocumentGenerations - usage.documentGenerations)
   });
 }
 

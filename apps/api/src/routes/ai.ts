@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getPlanPolicy } from "../ai/policy.js";
-import { getUsageSnapshot } from "../ai/usage.js";
+import { getUsageSnapshot, isUsageLimitBypassedForEmail } from "../ai/usage.js";
 import { AppError } from "../errors/app-error.js";
 import { prisma } from "../lib/prisma.js";
 import type { AuthenticatedLocals } from "../middleware/require-auth.js";
@@ -16,7 +16,8 @@ aiRouter.get(
       where: { id: userId },
       select: {
         id: true,
-        plan: true
+        plan: true,
+        email: true
       }
     });
 
@@ -26,25 +27,27 @@ aiRouter.get(
 
     const policy = getPlanPolicy(user.plan);
     const { monthKey, usage } = await getUsageSnapshot(user.id);
+    const bypassUsageLimit = isUsageLimitBypassedForEmail(user.email);
 
     res.json({
       plan: user.plan,
       monthKey,
+      isUsageLimitBypassed: bypassUsageLimit,
       models: {
         documentGeneration: policy.documentGenerationModel,
         gradingAndChat: policy.gradingChatModel
       },
       limits: {
-        documentGenerations: policy.monthlyDocumentGenerations,
-        chatTurns: policy.monthlyChatTurns
+        documentGenerations: bypassUsageLimit ? null : policy.monthlyDocumentGenerations,
+        chatTurns: bypassUsageLimit ? null : policy.monthlyChatTurns
       },
       usage: {
         documentGenerations: usage.documentGenerations,
         chatTurns: usage.chatTurns
       },
       remaining: {
-        documentGenerations: Math.max(0, policy.monthlyDocumentGenerations - usage.documentGenerations),
-        chatTurns: Math.max(0, policy.monthlyChatTurns - usage.chatTurns)
+        documentGenerations: bypassUsageLimit ? null : Math.max(0, policy.monthlyDocumentGenerations - usage.documentGenerations),
+        chatTurns: bypassUsageLimit ? null : Math.max(0, policy.monthlyChatTurns - usage.chatTurns)
       }
     });
   })
